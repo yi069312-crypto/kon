@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>لوحة تحكم كن رياضي</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;900&display=swap" rel="stylesheet">
+<style>
+:root{--n:#0a0f2c;--y:#FFD700;--r:#C1272D;color-scheme:dark}
+*{box-sizing:border-box;margin:0;min-width:0}
+body{font-family:Cairo,system-ui,sans-serif;background:var(--n);color:#fff;min-height:100vh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{color:var(--y);font-size:1.5rem;margin-bottom:14px}h2{color:var(--y);font-size:1.1rem;margin-bottom:10px}
+button,input,textarea{font:inherit;color:inherit}button{cursor:pointer;border:0}
+input,textarea{width:100%;background:rgba(0,0,0,.4);border:1.5px solid rgba(255,215,0,.4);border-radius:12px;padding:11px 13px}textarea{min-height:90px}
+label{display:grid;gap:6px;font-weight:600;font-size:.9rem;margin-bottom:10px}
+.card{background:rgba(255,255,255,.07);border:1px solid rgba(255,215,0,.3);border-radius:18px;padding:16px;margin-bottom:14px}
+.b{width:100%;padding:12px;border-radius:12px;font-weight:900;background:var(--y);color:var(--n)}
+.s{width:auto;padding:6px 12px;font-size:.85rem;border-radius:10px;font-weight:700;background:rgba(255,255,255,.1);border:1px solid var(--y)}.s.d{background:var(--r);border-color:var(--r)}
+.tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;position:sticky;top:0;background:var(--n);padding:8px 0;z-index:2}
+.tabs button{flex:none;padding:9px 16px;border-radius:99px;background:rgba(255,255,255,.08);border:1px solid rgba(255,215,0,.4);font-weight:700}.tabs .on{background:var(--y);color:var(--n)}
+.row{display:flex;gap:8px;align-items:center;padding:10px 0;border-top:1px solid rgba(255,255,255,.1);flex-wrap:wrap}
+.row img{width:56px;height:42px;object-fit:cover;border-radius:8px}.row span{flex:1;overflow-wrap:anywhere;font-size:.9rem;min-width:120px}
+.wk{display:grid;grid-template-columns:70px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px;font-size:.85rem}.wk input{padding:8px}
+#msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#141b45;border:1.5px solid var(--y);border-radius:14px;padding:10px 16px;z-index:9;max-width:92vw}
+.err{color:#ff7a80;margin-top:8px;min-height:1.4em}.mut{opacity:.7;font-size:.85rem}
+</style>
+</head>
+<body>
+<main id="app"></main><div id="msg" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+const C=window.KON_CFG||{},B="kon-images",$=s=>document.querySelector(s);
+const DAYS=["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
+// كل تبويب = جدول. الحقل: [العمود، العنوان، النوع] النوع: t نص طويل، n رقم، img صورة
+const T={
+ notifications:{l:"🔔 إشعارات",f:[["title","عنوان الإشعار"],["body","نص الإشعار","t"]],btn:"إرسال لكل المستخدمين",ord:"id",asc:false,sum:r=>[r.title,r.body]},
+ gallery:{l:"🏆 صور الإنجازات",f:[["title","العنوان بالعربي"],["title_en","English title"],["image_url","الصورة","img"]],ord:"id",asc:false,sum:r=>[r.title,r.title_en],img:1},
+ challenges:{l:"🔥 التحديات",f:[["title","اسم التحدي"],["target","الهدف (رقم)","n"],["unit","الوحدة (ضغطة / كم / يوم)"],["step","الزيادة في كل ضغطة","n"],["pts","نقاط الإكمال","n"]],ord:"sort_order",asc:true,sum:r=>[r.title,r.target+" "+r.unit,"+"+r.step,r.pts+" نقطة"]},
+ games:{l:"⚽ الألعاب",f:[["name","اسم اللعبة"],["emoji","إيموجي (⚽ 🏀 🏊)"],["minutes","المدة بالدقائق","n"],["kcal","السعرات الإجمالية","n"]],ord:"sort_order",asc:true,sum:r=>[r.emoji+" "+r.name,r.minutes+" د",r.kcal+" سعرة"]},
+ site_config:{l:"⚙️ الإعدادات والجدول"}};
+let sb,tab,editId=null;
+function h(t,p={},...k){const e=document.createElement(t);for(const[a,v]of Object.entries(p)){if(a==="class")e.className=v;else if(a.startsWith("on"))e.addEventListener(a.slice(2),v);else if(a in e)e[a]=v;else e.setAttribute(a,v)}k.flat().forEach(c=>e.append(c instanceof Node?c:document.createTextNode(c??"")));return e}
+const app=(...n)=>$("#app").replaceChildren(...n);
+const say=m=>{const e=$("#msg");e.textContent=m;e.hidden=false;clearTimeout(say.t);say.t=setTimeout(()=>e.hidden=true,4000)};
+
+async function init(){
+  if(!window.supabase||!C.url||/YOUR/i.test(C.url)||!C.anonKey){app(h("div",{class:"card"},"عدّلي ملف config.js بقيم Supabase أولًا (URL و anon key)."));return}
+  sb=supabase.createClient(C.url,C.anonKey);
+  const{data}=await sb.auth.getSession();data.session?home():login();
+}
+function login(err){
+  const em=h("input",{type:"email",required:true,autocomplete:"username"}),pw=h("input",{type:"password",required:true,autocomplete:"current-password"}),er=h("div",{class:"err"},err||"");
+  app(h("form",{class:"card",style:"margin-top:12vh",onsubmit:async e=>{e.preventDefault();er.textContent="";
+    const{error}=await sb.auth.signInWithPassword({email:em.value.trim(),password:pw.value});
+    if(error){er.textContent="الإيميل أو الباسورد غير صحيح.";return}home()}},
+    h("h1",{},"🔐 لوحة تحكم كن رياضي"),h("label",{},"الإيميل",em),h("label",{},"الباسورد",pw),h("button",{class:"b"},"دخول"),er));
+}
+function home(){
+  const tabs=h("div",{class:"tabs"},Object.keys(T).map(k=>h("button",{"data-k":k,onclick:()=>show(k)},T[k].l)),
+    h("button",{onclick:async()=>{await sb.auth.signOut();login()}},"خروج"));
+  app(h("h1",{},"⚙️ لوحة التحكم"),tabs,h("div",{id:"pane"}));show("notifications");
+}
+function compress(f){return new Promise((ok,no)=>{const im=new Image(),u=URL.createObjectURL(f);
+  im.onload=()=>{const s=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
+    const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);
+    c.toBlob(b=>b?ok(b):no(new Error("فشل ضغط الصورة")),"image/jpeg",.72)};
+  im.onerror=()=>no(new Error("ملف الصورة غير صالح"));im.src=u})}
+async function rmImg(u){if(!u)return;const i=u.indexOf("/"+B+"/");if(i<0)return;try{await sb.storage.from(B).remove([decodeURIComponent(u.slice(i+B.length+2).split("?")[0])])}catch(e){}}
+
+function show(k){
+  tab=k;editId=null;document.querySelectorAll(".tabs [data-k]").forEach(x=>x.classList.toggle("on",x.dataset.k===k));
+  k==="site_config"?settings():list(k);
+}
+async function list(k){
+  const t=T[k],inp={},file={};let up=null;
+  const ff=t.f.map(([n,l,ty])=>{const i=h(ty==="t"?"textarea":"input",{});if(ty==="n"){i.type="number";i.step="any"}inp[n]=i;
+    if(ty==="img"){const f=h("input",{type:"file",accept:"image/*"});file[n]=f;return h("label",{},l,f)}return h("label",{},l,i)});
+  const bt=h("button",{class:"b"},t.btn||"إضافة"),box=h("div",{class:"card"}),ttl=h("h2",{},t.l);
+  const reset=()=>{editId=null;bt.textContent=t.btn||"إضافة";fm.reset()};
+  const fm=h("form",{class:"card",onsubmit:async e=>{e.preventDefault();bt.disabled=true;let newImg=null;
+    try{const d={};
+      for(const[n,,ty]of t.f){if(ty==="img"){const f=file[n].files[0];if(f){if(!f.type.startsWith("image/")||f.size>25e6)throw new Error("اختاري صورة صالحة");
+          newImg=crypto.randomUUID()+".jpg";const{error}=await sb.storage.from(B).upload(newImg,await compress(f),{contentType:"image/jpeg",cacheControl:"31536000"});if(error)throw error;
+          d[n]=sb.storage.from(B).getPublicUrl(newImg).data.publicUrl}else if(!editId)throw new Error("ارفعي صورة الأول")}
+        else{const v=inp[n].value.trim();d[n]=ty==="n"?(v===""?undefined:+v):v}}
+      Object.keys(d).forEach(x=>d[x]===undefined&&delete d[x]);
+      let old=null;if(editId&&d.image_url){old=(window._rows.find(r=>r.id===editId)||{}).image_url}
+      const q=editId?sb.from(k).update(d).eq("id",editId):sb.from(k).insert(d);const{error}=await q;if(error)throw error;
+      if(old)await rmImg(old);reset();say(k==="notifications"?"اتبعت الإشعار ✔":"اتحفظ ✔");load();
+    }catch(x){if(newImg)try{await sb.storage.from(B).remove([newImg])}catch(y){}say("تعذر الحفظ: "+(x.message||x))}bt.disabled=false}},ttl,ff,bt);
+  $("#pane").replaceChildren(fm,box);
+  async function load(){const{data,error}=await sb.from(k).select("*").order(t.ord,{ascending:t.asc}).limit(200);
+    if(error){say("تعذر التحميل: "+error.message);return}window._rows=data;
+    box.replaceChildren(h("h2",{},"الحالي ("+data.length+")"),...(data.length?data.map(r=>h("div",{class:"row"},
+      t.img&&r.image_url?h("img",{src:r.image_url,alt:"",loading:"lazy"}):"",
+      h("span",{},t.sum(r).filter(x=>x!=null&&x!=="").join(" • ")),
+      k!=="notifications"?h("button",{class:"s",onclick:()=>{editId=r.id;t.f.forEach(([n,,ty])=>{if(ty!=="img")inp[n].value=r[n]??""});bt.textContent="حفظ التعديل";fm.scrollIntoView({behavior:"smooth"})}},"تعديل"):"",
+      h("button",{class:"s d",onclick:async()=>{if(!confirm("متأكد من الحذف؟"))return;const{error}=await sb.from(k).delete().eq("id",r.id);if(error){say("تعذر الحذف: "+error.message);return}await rmImg(r.image_url);load()}},"حذف"))):[h("div",{class:"mut"},"لسه مفيش عناصر")]))}
+  load();
+}
+async function settings(){
+  const{data,error}=await sb.from("site_config").select("*").eq("id",1).maybeSingle();
+  if(error){say("تعذر التحميل: "+error.message);return}
+  const c=data||{},wk=Array.isArray(c.wk)?c.wk:[];
+  const nm=h("input",{value:c.name||"",maxLength:60}),wa=h("input",{value:c.wa||"",inputMode:"numeric",placeholder:"201000000000"}),sc=h("textarea",{value:c.sched||"",maxLength:3000});
+  const rows=DAYS.map((d,i)=>{const r=wk[i]||{};return[h("input",{value:r.a||"",placeholder:"الفعالية"}),h("input",{type:"date",value:r.g||""}),h("input",{type:"time",value:r.t||""}),d]});
+  const bt=h("button",{class:"b"},"حفظ");
+  $("#pane").replaceChildren(h("form",{class:"card",onsubmit:async e=>{e.preventDefault();
+    const w=wa.value.replace(/\D/g,"");if(w.length>15){say("رقم الواتساب غير صحيح");return}
+    bt.disabled=true;const{error}=await sb.from("site_config").upsert({id:1,name:nm.value.trim()||"كن رياضي",wa:w,sched:sc.value.trim(),wk:rows.map(([a,g,t])=>({a:a.value.trim(),g:g.value,t:t.value}))});
+    bt.disabled=false;say(error?"تعذر الحفظ: "+error.message:"اتحفظ ✔")}},
+    h("h2",{},T.site_config.l),h("label",{},"اسم التطبيق",nm),h("label",{},"رقم واتساب التسجيل (اتركيه فاضي للرقم الافتراضي)",wa),
+    h("label",{},"جدول الفعاليات (نص بيظهر لكل الزوار)",sc),h("h2",{style:"margin-top:8px"},"جدول الأسبوع"),
+    rows.map(([a,g,t,d])=>h("div",{class:"wk"},h("b",{},d),a,g,t)),bt));
+}
+init();
+</script>
+</body>
+</html>
