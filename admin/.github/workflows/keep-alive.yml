@@ -1,0 +1,15 @@
+name: Keep Supabase alive
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read one row (counts as database activity)
+        run: |
+          URL=$(grep -oP 'url:\s*"\K[^"]+' config.js)
+          KEY=$(grep -oP 'anonKey:\s*"\K[^"]+' config.js)
+          curl -fsS "$URL/rest/v1/site_config?select=id&limit=1" -H "apikey: $KEY" > /dev/null
